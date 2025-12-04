@@ -1,7 +1,7 @@
-# Transit Gateway Attachment ON/OFF Lambda Functions
+# Transit Gateway Attachment ON/OFF Lambda Function
 
 ## 概要
-プロジェクト凍結時のコスト削減のため、Transit Gateway Attachmentを削除・再作成するLambda関数
+プロジェクト凍結時のコスト削減のため、Transit Gateway Attachmentを削除・再作成する統合Lambda関数
 
 ## コスト削減効果
 - **削除時**: $47/月 → $0
@@ -9,43 +9,28 @@
 
 ## Lambda関数
 
-### 1. remove-tgw-attachment (削除)
-**ファイル**: `lambda-tgw-attach-remove/index.py`
+**ファイル**: `index.py`
 
-**環境変数**:
+### 環境変数
+
+#### 必須（削除用）
 ```
 TGW_ATTACHMENT_ID=tgw-attach-02be575b90d39d0c4
 ```
 
-**IAMポリシー**:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeTransitGatewayVpcAttachments",
-        "ec2:DeleteTransitGatewayVpcAttachment"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-### 2. add-tgw-attachment (作成)
-**ファイル**: `lambda-tgw-attach-add/index.py`
-
-**環境変数**:
+#### 必須（作成用）
 ```
 TGW_ID=tgw-00791c5c24815d589
 VPC_ID=vpc-0709aa89bfb9f5ab4
 SUBNET_IDS=subnet-xxxxxxxx,subnet-yyyyyyyy
+```
+
+#### オプション
+```
 TAG_NAME=v2-tgwa-test-magent
 ```
 
-**IAMポリシー**:
+### IAMポリシー
 ```json
 {
   "Version": "2012-10-17",
@@ -54,6 +39,7 @@ TAG_NAME=v2-tgwa-test-magent
       "Effect": "Allow",
       "Action": [
         "ec2:DescribeTransitGatewayVpcAttachments",
+        "ec2:DeleteTransitGatewayVpcAttachment",
         "ec2:CreateTransitGatewayVpcAttachment",
         "ec2:CreateTags"
       ],
@@ -74,36 +60,27 @@ aws ec2 describe-transit-gateway-vpc-attachments \
   --output text
 ```
 
-### 2. Lambda関数の作成（削除用）
+### 2. Lambda関数の作成
 ```bash
-cd lambda-tgw-attach-remove
+# ZIPファイル作成
 zip function.zip index.py
 
+# Lambda関数作成
 aws lambda create-function \
   --profile gnaws-test-magent-GmcpUser \
-  --function-name remove-tgw-attachment \
-  --runtime python3.12 \
-  --role arn:aws:iam::783764585791:role/lambda-tgw-role \
-  --handler index.lambda_handler \
-  --zip-file fileb://function.zip \
-  --timeout 60 \
-  --environment Variables="{TGW_ATTACHMENT_ID=tgw-attach-02be575b90d39d0c4}"
-```
-
-### 3. Lambda関数の作成（作成用）
-```bash
-cd lambda-tgw-attach-add
-zip function.zip index.py
-
-aws lambda create-function \
-  --profile gnaws-test-magent-GmcpUser \
-  --function-name add-tgw-attachment \
+  --function-name transit-gateway-attachment-control \
   --runtime python3.12 \
   --role arn:aws:iam::783764585791:role/lambda-tgw-role \
   --handler index.lambda_handler \
   --zip-file fileb://function.zip \
   --timeout 300 \
-  --environment Variables="{TGW_ID=tgw-00791c5c24815d589,VPC_ID=vpc-0709aa89bfb9f5ab4,SUBNET_IDS=subnet-xxx,subnet-yyy,TAG_NAME=v2-tgwa-test-magent}"
+  --environment Variables="{
+    TGW_ATTACHMENT_ID=tgw-attach-02be575b90d39d0c4,
+    TGW_ID=tgw-00791c5c24815d589,
+    VPC_ID=vpc-0709aa89bfb9f5ab4,
+    SUBNET_IDS=subnet-xxx,subnet-yyy,
+    TAG_NAME=v2-tgwa-test-magent
+  }"
 ```
 
 ## 実行方法
@@ -112,7 +89,8 @@ aws lambda create-function \
 ```bash
 aws lambda invoke \
   --profile gnaws-test-magent-GmcpUser \
-  --function-name remove-tgw-attachment \
+  --function-name transit-gateway-attachment-control \
+  --payload '{"action":"remove"}' \
   /tmp/remove-result.json
 
 cat /tmp/remove-result.json | jq
@@ -122,10 +100,27 @@ cat /tmp/remove-result.json | jq
 ```bash
 aws lambda invoke \
   --profile gnaws-test-magent-GmcpUser \
-  --function-name add-tgw-attachment \
+  --function-name transit-gateway-attachment-control \
+  --payload '{"action":"add"}' \
   /tmp/add-result.json
 
 cat /tmp/add-result.json | jq
+```
+
+## テストイベント例
+
+### 削除テスト
+```json
+{
+  "action": "remove"
+}
+```
+
+### 作成テスト
+```json
+{
+  "action": "add"
+}
 ```
 
 ## 注意事項
